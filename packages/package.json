@@ -1,0 +1,12 @@
+{
+  "name": "@svgunity/packages",
+  "private": true,
+  "workspaces": [
+    "win32-x64-msvc",
+    "win32-arm64-msvc",
+    "linux-x64-gnu",
+    "linux-arm64-gnu",
+    "darwin-x64",
+    "darwin-arm64"
+  ]
+}
