@@ -1,6 +1,6 @@
 {
   "name": "svgunity-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Node.js CLI for SVG animation rendering (frames/MP4) and Edge TTS narration, backed by the svgunity NAPI addon",
   "main": "index.js",
   "bin": {
