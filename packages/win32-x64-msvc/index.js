@@ -1,0 +1,1 @@
+module.exports = require('./svgunity_lib.win32-x64-msvc.node')

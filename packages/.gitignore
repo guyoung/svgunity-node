@@ -1,0 +1,4 @@
+# Compiled NAPI addons: platform-specific binaries produced by the CI workflow
+# (.github/workflows/build-svgunity-lib.yml) or a local `napi build`. The
+# scaffold (package.json / index.js / index.d.ts / README.md) stays tracked.
+*.node

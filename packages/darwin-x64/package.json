@@ -1,0 +1,19 @@
+{
+  "name": "@svgunity/svgunity_lib.darwin-x64",
+  "version": "1.0.0",
+  "description": "Native Artifact for svgunity",
+  "main": "index.js",
+  "author": "guyoung",
+  "homepage": "https://github.com/guyoung/svgunity-node",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "svgunity_lib.darwin-x64.node",
+    "README.md"
+  ],
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "publishConfig": {
+    "access": "public"
+  }
+}
