@@ -4,7 +4,7 @@
   "description": "Node.js CLI for SVG animation rendering (frames/MP4) and Edge TTS narration, backed by the svgunity NAPI addon",
   "main": "index.js",
   "bin": {
-    "svgunity": "index.js"
+    "svgunity-cli": "index.js"
   },
   "keywords": ["svg", "smil", "animation", "tts", "napi", "ffmpeg"],
   "author": "guyoung",

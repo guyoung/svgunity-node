@@ -10,9 +10,9 @@ Input/output options mirror the Rust CLI (`svgunity-cli`); note the
 ## Usage
 
 Run with `node index.js <COMMAND>` from this directory. Once the package is
-installed as a project dependency (`npm install`), use `npx svgunity
+installed as a project dependency (`npm install`), use `npx svgunity-cli
 <COMMAND>`; after a global install (`npm i -g .` / `npm link`), plain
-`svgunity <COMMAND>` also works. The subcommands mirror the Rust CLI
+`svgunity-cli <COMMAND>` also works. The subcommands mirror the Rust CLI
 (`crates\svgunity-cli`):
 
 ```bat
@@ -31,17 +31,17 @@ node index.js video-check <INPUT> [--json]
 
 ### npx / global install
 
-After `npm install` in a project that depends on this package, `npx svgunity`
+After `npm install` in a project that depends on this package, `npx svgunity-cli`
 resolves the local binary — no global install needed:
 
 ```bat
-npx svgunity tts --input script.txt --out narration.webm
-npx svgunity render intro.svg --out frames --fps 30
-npx svgunity compose video.json --json
+npx svgunity-cli tts --input script.txt --out narration.webm
+npx svgunity-cli render intro.svg --out frames --fps 30
+npx svgunity-cli compose video.json --json
 ```
 
 `npm i -g .` (or `npm link`) run in this directory additionally exposes the
-global `svgunity` command in any directory.
+global `svgunity-cli` command in any directory.
 
 ### render
 
