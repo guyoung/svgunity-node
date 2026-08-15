@@ -1,6 +1,6 @@
 {
   "name": "svgunity-cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Node.js CLI for SVG animation rendering (frames/MP4) and Edge TTS narration, backed by the svgunity NAPI addon",
   "main": "index.js",
   "bin": {
@@ -16,11 +16,11 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@svgunity/svgunity_lib.win32-x64-msvc": "1.0.0",
-    "@svgunity/svgunity_lib.win32-arm64-msvc": "1.0.0",
-    "@svgunity/svgunity_lib.darwin-x64": "1.0.0",
-    "@svgunity/svgunity_lib.darwin-arm64": "1.0.0",
-    "@svgunity/svgunity_lib.linux-x64-gnu": "1.0.0",
-    "@svgunity/svgunity_lib.linux-arm64-gnu": "1.0.0"
+    "@svgunity/svgunity_lib.win32-x64-msvc": "1.0.2",
+    "@svgunity/svgunity_lib.win32-arm64-msvc": "1.0.2",
+    "@svgunity/svgunity_lib.darwin-x64": "1.0.2",
+    "@svgunity/svgunity_lib.darwin-arm64": "1.0.2",
+    "@svgunity/svgunity_lib.linux-x64-gnu": "1.0.2",
+    "@svgunity/svgunity_lib.linux-arm64-gnu": "1.0.2"
   }
 }
