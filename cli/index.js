@@ -323,6 +323,12 @@ function cmdMp4(args) {
       background: { type: 'string', valueName: '#RRGGBB' },
       subtitles: { type: 'string', valueName: 'FILE' },
       'subtitle-font': { type: 'string', valueName: 'FILE' },
+      'subtitle-font-size': { type: 'string', valueName: 'F' },
+      'subtitle-bold': { type: 'boolean' },
+      'subtitle-margin-v': { type: 'string', valueName: 'F' },
+      'subtitle-alignment': { type: 'string', valueName: 'N' },
+      'subtitle-outline': { type: 'string', valueName: 'F' },
+      'subtitle-font-name': { type: 'string', valueName: 'NAME' },
       help: { type: 'boolean', short: 'h' },
     },
     positional: { name: 'INPUT', min: 1, max: 1 },
@@ -339,6 +345,16 @@ function cmdMp4(args) {
   if (scale <= 0) throw new Error(`scale must be greater than 0, got ${scale}`);
   const threads = uint('threads', values.threads ?? String(defaultThreads()));
   const crf = uint('crf', values.crf ?? '10', { min: 0, max: 51 });
+  const subtitleFontSize =
+    values['subtitle-font-size'] !== undefined ? num('subtitle-font-size', values['subtitle-font-size']) : undefined;
+  const subtitleBold = values['subtitle-bold'] !== undefined ? true : undefined;
+  const subtitleMarginV =
+    values['subtitle-margin-v'] !== undefined ? num('subtitle-margin-v', values['subtitle-margin-v']) : undefined;
+  const subtitleAlignment =
+    values['subtitle-alignment'] !== undefined ? uint('subtitle-alignment', values['subtitle-alignment'], { min: 1, max: 9 }) : undefined;
+  const subtitleOutline =
+    values['subtitle-outline'] !== undefined ? num('subtitle-outline', values['subtitle-outline']) : undefined;
+  const subtitleFontName = values['subtitle-font-name'];
 
   const svg = readSvg(input);
   const baseDir = baseDirOf(input);
@@ -359,6 +375,12 @@ function cmdMp4(args) {
     background: values.background ?? '#000000',
     ...(values.subtitles !== undefined ? { subtitle: values.subtitles } : {}),
     ...(values['subtitle-font'] !== undefined ? { subtitleFont: values['subtitle-font'] } : {}),
+    ...(subtitleFontSize !== undefined ? { subtitleFontSize } : {}),
+    ...(subtitleBold !== undefined ? { subtitleBold } : {}),
+    ...(subtitleMarginV !== undefined ? { subtitleMarginV } : {}),
+    ...(subtitleAlignment !== undefined ? { subtitleAlignment } : {}),
+    ...(subtitleOutline !== undefined ? { subtitleOutline } : {}),
+    ...(subtitleFontName !== undefined ? { subtitleFontName } : {}),
   });
   console.log(
     `generated ${out} (${w}x${h}, ${total} frames, ${fps} fps, duration ${(total / fps).toFixed(2)}s, codec ${codec}, ${threads} threads)`
@@ -517,6 +539,12 @@ function cmdCompose(args) {
   const spec = {
     options: {
       out: { type: 'string', valueName: 'PATH' },
+      'subtitle-font-size': { type: 'string', valueName: 'F' },
+      'subtitle-bold': { type: 'boolean' },
+      'subtitle-margin-v': { type: 'string', valueName: 'F' },
+      'subtitle-alignment': { type: 'string', valueName: 'N' },
+      'subtitle-outline': { type: 'string', valueName: 'F' },
+      'subtitle-font-name': { type: 'string', valueName: 'NAME' },
       json: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -524,7 +552,22 @@ function cmdCompose(args) {
   };
   const { values, positionals } = parseArgs(args, spec);
   if (values.help) return printHelp('compose');
-  const report = svgunity.compose(positionals[0], values.out);
+  const style = {};
+  if (values['subtitle-font-size'] !== undefined) {
+    style.fontSize = num('subtitle-font-size', values['subtitle-font-size']);
+  }
+  if (values['subtitle-bold'] !== undefined) style.bold = true;
+  if (values['subtitle-margin-v'] !== undefined) {
+    style.marginV = num('subtitle-margin-v', values['subtitle-margin-v']);
+  }
+  if (values['subtitle-alignment'] !== undefined) {
+    style.alignment = uint('subtitle-alignment', values['subtitle-alignment'], { min: 1, max: 9 });
+  }
+  if (values['subtitle-outline'] !== undefined) {
+    style.outline = num('subtitle-outline', values['subtitle-outline']);
+  }
+  if (values['subtitle-font-name'] !== undefined) style.fontName = values['subtitle-font-name'];
+  const report = svgunity.compose(positionals[0], values.out, Object.keys(style).length ? style : undefined);
   if (values.json) {
     printJson(report);
   } else {
@@ -540,6 +583,7 @@ function cmdSrt(args) {
       input: { type: 'string', valueName: 'PATH' },
       boundaries: { type: 'string', valueName: 'PATH' },
       out: { type: 'string', valueName: 'PATH' },
+      'max-width-em': { type: 'string', valueName: 'F' },
       help: { type: 'boolean', short: 'h' },
     },
     positional: { name: 'none', min: 0, max: 0 },
@@ -558,7 +602,8 @@ function cmdSrt(args) {
   const text = fs.readFileSync(values.input, 'utf8');
   const boundariesJson = fs.readFileSync(values.boundaries, 'utf8');
   const out = values.out ?? values.input.replace(/\.[^/.]+$/, '') + '.srt';
-  const srt = svgunity.srtGenerate(text, boundariesJson);
+  const maxWidthEm = values['max-width-em'] !== undefined ? num('max-width-em', values['max-width-em']) : undefined;
+  const srt = svgunity.srtGenerate(text, boundariesJson, maxWidthEm);
   fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
   fs.writeFileSync(out, srt);
   const entries = srt.split('\r\n\r\n').filter(Boolean).length;
@@ -690,6 +735,12 @@ const COMMANDS = {
       ['--background <#RRGGBB>', 'Background color for transparent regions [default: #000000]'],
       ['--subtitles <FILE>', 'Burn subtitles from an .srt/.ass file (timed by the animation clock)'],
       ['--subtitle-font <FILE>', 'Font file for subtitle rendering (recommended for CJK)'],
+      ['--subtitle-font-size <F>', 'Subtitle font size in pixels (default: scales with the shorter frame side)'],
+      ['--subtitle-bold', 'Render subtitles in bold (default true)'],
+      ['--subtitle-margin-v <F>', 'Subtitle bottom margin in pixels (default 10)'],
+      ['--subtitle-alignment <N>', 'Subtitle alignment 1..9 (default 2 = bottom-center)'],
+      ['--subtitle-outline <F>', 'Subtitle outline width in pixels (default 1.5)'],
+      ['--subtitle-font-name <NAME>', 'Subtitle font family name (default follows --subtitle-font)'],
       ['-h, --help', 'Print help'],
     ],
   },
@@ -730,6 +781,12 @@ const COMMANDS = {
     args: [
       ['<MANIFEST>', 'Manifest JSON (out/fps/scale/background/pad/video_codec/crf/threads + scenes[{svg, audio?, duration?}])'],
       ['--out <PATH>', "Override the manifest's output path"],
+      ['--subtitle-font-size <F>', "Override the manifest's subtitle font size (px)"],
+      ['--subtitle-bold', "Override the manifest's subtitle bold"],
+      ['--subtitle-margin-v <F>', "Override the manifest's subtitle bottom margin (px)"],
+      ['--subtitle-alignment <N>', "Override the manifest's subtitle alignment 1..9"],
+      ['--subtitle-outline <F>', "Override the manifest's subtitle outline width (px)"],
+      ['--subtitle-font-name <NAME>', "Override the manifest's subtitle font family name"],
       ['--json', 'Print the final video/audio durations as JSON instead of a summary'],
       ['-h, --help', 'Print help'],
     ],
@@ -741,6 +798,7 @@ const COMMANDS = {
       ['--input <PATH>', 'Narration text file'],
       ['--boundaries <PATH>', 'Word-boundary JSON from `tts --word-boundaries`'],
       ['--out <PATH>', 'Output SRT path (defaults to the input path with .srt)'],
+      ['--max-width-em <F>', 'Max subtitle line width in em (default 16 ≈ 15 chars at 1080-wide / 64px)'],
       ['-h, --help', 'Print help'],
     ],
   },
