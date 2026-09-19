@@ -18,7 +18,7 @@ Two parts:
 svgunity-node/
 ├── cli/
 │   ├── index.js           # CLI entry (also exports the addon when required as a module)
-│   ├── package.json       # bin: svgunity = index.js; optionalDependencies point to the platform packages
+│   ├── package.json       # bin: svgunity-cli = index.js; optionalDependencies point to the platform packages
 │   └── README.md          # Detailed CLI usage
 └── packages/
     ├── index.js           # NAPI-RS generated loader (with platform detection)
@@ -46,14 +46,14 @@ into the native binding — no separate installation needed.
 ## Quick start (CLI)
 
 Without a global install, run with `node`; after `npm i -g .` (or
-`npm link`) in `cli/`, use `svgunity` directly — both are equivalent:
+`npm link`) in `cli/`, use `svgunity-cli` directly — both are equivalent:
 
 ```bat
 node svgunity-node\cli\index.js <COMMAND> [OPTIONS]
-svgunity <COMMAND> [OPTIONS]
+svgunity-cli <COMMAND> [OPTIONS]
 ```
 
-When the package is installed as a project dependency, `npx svgunity
+When the package is installed as a project dependency, `npx svgunity-cli
 <COMMAND>` also resolves the local binary (see `cli/README.md`).
 
 Command overview (see `cli/README.md` and each command's `--help`):
@@ -71,9 +71,9 @@ Command overview (see `cli/README.md` and each command's `--help`):
 Typical workflow (a narrated explainer video):
 
 ```bat
-svgunity tts --input narration_01.txt --voice zh-CN-XiaoxiaoNeural --out narration_01.webm --word-boundaries narration_01.boundaries.json
-svgunity srt --input narration_01.txt --boundaries narration_01.boundaries.json --out subtitles\page01.srt
-svgunity compose video.json --json
+svgunity-cli tts --input narration_01.txt --voice zh-CN-XiaoxiaoNeural --out narration_01.webm --word-boundaries narration_01.boundaries.json
+svgunity-cli srt --input narration_01.txt --boundaries narration_01.boundaries.json --out subtitles\page01.srt
+svgunity-cli compose video.json --json
 ```
 
 ## Using the JS API
@@ -120,11 +120,15 @@ A clear error is thrown (with build/install hints) when none is found. The
 
 ## Building from source
 
-Prerequisites: the Rust toolchain (MSVC) with the VS2022 C++ toolchain, a
-statically linked FFmpeg (see `crates/svgunity-cli/README.zh-CN.md`), and a
-working `@napi-rs/cli`.
+Prerequisites: the Rust toolchain (MSVC) with the VS2022 C++ toolchain and a
+statically linked FFmpeg (see `crates/svgunity-cli/README.zh-CN.md`). On
+Windows, build and install the current platform binary with:
 
-From the `cli/` directory (needs a package.json):
+```bat
+crates\svgunity-cli\build-svgunity-lib.bat --release
+```
+
+or, via the napi CLI, from the `cli/` directory (needs a package.json):
 
 ```bat
 npx --yes -p @napi-rs/cli napi build --release ^

@@ -19,11 +19,13 @@ installed as a project dependency (`npm install`), use `npx svgunity-cli
 node index.js render <INPUT> [--out DIR] [--fps N] [--duration SEC] [--start SEC] [--end SEC] [--scale F] [--threads N]
 node index.js mp4    <INPUT> [--out PATH] [--fps N] [--duration SEC] [--start SEC] [--end SEC] [--scale F] [--threads N]
                        [--video-codec CODEC] [--crf N] [--background #RRGGBB] [--subtitles FILE] [--subtitle-font FILE]
-                       [--subtitle-font-size F] [--subtitle-bold] [--subtitle-margin-v F] [--subtitle-alignment N] [--subtitle-outline F] [--subtitle-font-name NAME]
+                       [--subtitle-font-size F] [--subtitle-bold BOOL] [--subtitle-margin-v F] [--subtitle-alignment N] [--subtitle-outline F] [--subtitle-font-name NAME]
+                       [--encoder-preset PRESET] [--backend MODE]
 node index.js tts    [--text TEXT | --input PATH] [--out PATH] [--voice VOICE]
                 [--rate PCT] [--pitch HZ] [--volume PCT] [--format FMT] [--word-boundaries PATH] [--list-voices]
-node index.js merge  <VIDEO> <AUDIO>... [--out PATH] [--video-codec CODEC] [--audio-codec CODEC] [--pad SEC] [--loudnorm]
-node index.js compose <MANIFEST> [--out PATH] [--subtitle-font-size F] [--subtitle-bold] [--subtitle-margin-v F] [--subtitle-alignment N] [--subtitle-outline F] [--subtitle-font-name NAME] [--json]
+node index.js merge  <VIDEO> <AUDIO>... [--out PATH] [--video-codec CODEC] [--audio-codec CODEC] [--pad SEC] [--loudnorm [LUFS]]
+node index.js compose <MANIFEST> [--out PATH] [--subtitle-font-size F] [--subtitle-bold BOOL] [--subtitle-margin-v F] [--subtitle-alignment N] [--subtitle-outline F] [--subtitle-font-name NAME]
+                       [--encoder-preset PRESET] [--backend MODE] [--json]
 node index.js srt    --input <PATH> --boundaries <PATH> [--out PATH] [--max-width-em F]
 node index.js image-check <INPUT> [--pixel x,y] [--background #RRGGBB] [--json]
 node index.js audio-check <INPUT> [--json]
@@ -67,6 +69,7 @@ Convert an SVG animation to an MP4 video (H.264 by default; falls back to
 node index.js mp4 intro.svg
 node index.js mp4 intro.svg --out out.mp4 --fps 60 --crf 18
 node index.js mp4 intro.svg --video-codec mpeg4 --crf 4 --background "#ffffff"
+node index.js mp4 intro.svg --subtitles caption.srt --subtitle-bold false
 ```
 
 ### tts
@@ -101,6 +104,10 @@ node index.js merge intro.mp4 narration.webm --out intro_final.mp4
 ## Notes
 
 - All functions are synchronous and CPU-bound (like the CLI).
+- Exit codes mirror the Rust CLI: `0` on success, `2` for usage errors
+  (invalid flag values or argument combinations — the same code clap uses for
+  argument-parse failures) and `1` for runtime failures (IO, media encoding,
+  GPU, the TTS service).
 - The addon can also be used directly from JS via `require('./index.js')`
   (or `require('.')` from this directory; see `crates/svgunity-cli/src/napi.rs`):
   `svgInfo`, `renderFrame`, `renderFrames`, `renderMp4`, `tts`,

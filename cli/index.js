@@ -43,7 +43,11 @@ function load() {
       return require(pkgIndex);
     }
   }
-  // 3. Cargo output in the workspace target dir (debug/release).
+  // 3. Cargo output in the workspace target dir (debug/release). Cargo names
+  // the cdylib svgunity_lib.dll/.so, which Node cannot require — these
+  // candidates only match after a manual rename to svgunity_lib.node. The
+  // reliable local path is crates\svgunity-cli\build-svgunity-lib.bat, which
+  // installs the addon into packages/<triple>/ (candidate 2 above).
   const CANDIDATES = [
     path.join(__dirname, '..', '..', 'target', 'debug', 'svgunity_lib.node'),
     path.join(__dirname, '..', '..', 'target', 'release', 'svgunity_lib.node'),
@@ -54,10 +58,12 @@ function load() {
       return require(file);
     }
   }
-  const hint = path.join(__dirname, '..', '..', 'target');
+  const bat = path.join(__dirname, '..', '..', 'crates', 'svgunity-cli', 'build-svgunity-lib.bat');
   throw new Error(
-    `svgunity addon not found. Run "npm run build" in ${__dirname} ` +
-      `(or build the Rust crate into ${hint}) first.`
+    'svgunity addon not found. Run ' +
+      `"node ${bat} --release" (builds the Rust crate and installs ` +
+      'packages/<triple>/svgunity_lib.<triple>.node), or ' +
+      `"npm run build" in ${__dirname} first.`
   );
 }
 
@@ -65,9 +71,19 @@ const svgunity = load();
 
 // ── small helpers ──────────────────────────────────────────────────────────
 
+/// A CLI usage error (invalid flag value or argument combination). Exit
+/// code 2 — the same code clap uses for argument-parse failures in the
+/// Rust CLI; everything else (IO, media, GPU, the TTS service) exits 1.
+class UsageError extends Error {}
+
 function defaultThreads() {
+  // Mirrors the Rust CLI's render::default_thread_count:
+  // (logical / 2).clamp(1, 8). CPU rendering measured no gains past 8
+  // workers (the encoder side is the bottleneck), and each worker clones
+  // its own animation set, so more threads only add memory.
   try {
-    return os.availableParallelism ? os.availableParallelism() : os.cpus().length;
+    const logical = os.availableParallelism ? os.availableParallelism() : os.cpus().length;
+    return Math.min(8, Math.max(1, Math.floor(logical / 2)));
   } catch {
     return 1;
   }
@@ -76,7 +92,7 @@ function defaultThreads() {
 function num(name, value, { min, max } = {}) {
   const n = Number(value);
   if (!Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max)) {
-    throw new Error(
+    throw new UsageError(
       `invalid value '${value}' for '--${name}': must be a number` +
         (min !== undefined ? ` >= ${min}` : '') +
         (max !== undefined ? ` <= ${max}` : '')
@@ -88,9 +104,28 @@ function num(name, value, { min, max } = {}) {
 function uint(name, value, { min = 1, max } = {}) {
   const n = num(name, value, { min, max });
   if (!Number.isInteger(n)) {
-    throw new Error(`invalid value '${value}' for '--${name}': must be an integer`);
+    throw new UsageError(`invalid value '${value}' for '--${name}': must be an integer`);
   }
   return n;
+}
+
+/// `--subtitle-bold <BOOL>`: mirrors the Rust CLI's `Option<bool>` flag
+/// (clap accepts `true`/`false`).
+function boolArg(name, value) {
+  const s = String(value).toLowerCase();
+  if (s === 'true') return true;
+  if (s === 'false') return false;
+  throw new UsageError(`invalid value '${value}' for '--${name}': must be true or false`);
+}
+
+/// Best-effort identity for "do these two paths name the same file":
+/// path.resolve folds `.`/`..` segments and normalizes separators, and the
+/// comparison folds case on Windows (NTFS is case-insensitive by default).
+/// Mirrors path_key in the Rust CLI's main.rs. (Not fs.realpath: the
+/// compared paths usually do not exist yet.)
+function pathKey(p) {
+  const resolved = path.resolve(p);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function extensionOfFormat(format) {
@@ -112,21 +147,29 @@ function baseDirOf(input) {
   return path.dirname(path.resolve(input));
 }
 
+/// Exit codes mirror the Rust CLI (crates\svgunity-cli\src\main.rs): 2 for
+/// usage errors, 1 for runtime failures (IO, media encoding, GPU, the TTS
+/// service). The addon maps ErrorKind::InvalidInput to napi's InvalidArg
+/// status, so err.code carries the category across the FFI boundary.
+function exitCodeOf(err) {
+  return err instanceof UsageError || (err && err.code === 'InvalidArg') ? 2 : 1;
+}
+
 function fail(err) {
   console.error(`error: ${err.message || err}`);
-  process.exit(1);
+  process.exit(exitCodeOf(err));
 }
 
 /// Frame count for a `[start, end)` window: `ceil((end - start) x fps)`, at
 /// least 1 (mirrors render::window_frame_count in the Rust crate).
 function windowFrameCount(duration, fps, start, end) {
-  if (fps < 1) throw new Error('fps must be >= 1');
+  if (fps < 1) throw new UsageError('fps must be >= 1');
   if (!Number.isFinite(start) || start < 0) {
-    throw new Error(`--start must be a finite value >= 0, got ${start}`);
+    throw new UsageError(`--start must be a finite value >= 0, got ${start}`);
   }
   let e;
   if (end !== undefined) {
-    if (!Number.isFinite(end)) throw new Error(`--end must be a finite value, got ${end}`);
+    if (!Number.isFinite(end)) throw new UsageError(`--end must be a finite value, got ${end}`);
     e = end;
   } else if (duration > 0) {
     e = duration;
@@ -134,7 +177,7 @@ function windowFrameCount(duration, fps, start, end) {
     e = 1 / fps;
   }
   if (e <= start) {
-    throw new Error(`--end (${e.toFixed(3)}) must be greater than --start (${start.toFixed(3)})`);
+    throw new UsageError(`--end (${e.toFixed(3)}) must be greater than --start (${start.toFixed(3)})`);
   }
   const framesF = (e - start) * fps;
   if (!Number.isFinite(framesF) || framesF >= Number.MAX_SAFE_INTEGER) {
@@ -145,11 +188,11 @@ function windowFrameCount(duration, fps, start, end) {
 
 function parsePixelCoord(s) {
   const idx = s.indexOf(',');
-  if (idx < 0) throw new Error(`--pixel expects "x,y", got "${s}"`);
+  if (idx < 0) throw new UsageError(`--pixel expects "x,y", got "${s}"`);
   const x = Number(s.slice(0, idx).trim());
   const y = Number(s.slice(idx + 1).trim());
   if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0) {
-    throw new Error(`--pixel expects "x,y" with non-negative integers, got "${s}"`);
+    throw new UsageError(`--pixel expects "x,y" with non-negative integers, got "${s}"`);
   }
   return `${x},${y}`;
 }
@@ -201,10 +244,10 @@ function parseArgs(args, spec) {
         name = name.slice(0, eq);
       }
       const opt = spec.options[name];
-      if (!opt) throw new Error(`unexpected argument '--${name}' found`);
+      if (!opt) throw new UsageError(`unexpected argument '--${name}' found`);
       if (opt.type === 'boolean') {
         if (inline !== undefined) {
-          throw new Error(`unexpected value '${inline}' for '--${name}' found`);
+          throw new UsageError(`unexpected value '${inline}' for '--${name}' found`);
         }
         values[name] = true;
       } else {
@@ -221,7 +264,7 @@ function parseArgs(args, spec) {
           if (opt.optional) {
             val = opt.defaultMissing;
           } else {
-            throw new Error(
+            throw new UsageError(
               `a value is required for '--${name} <${opt.valueName ?? name}>' but none was supplied`
             );
           }
@@ -231,7 +274,7 @@ function parseArgs(args, spec) {
     } else if (a.length > 1 && a[0] === '-') {
       const c = a.slice(1);
       const entry = Object.entries(spec.options).find(([, o]) => o.short === c);
-      if (!entry) throw new Error(`unexpected argument '-${c}' found`);
+      if (!entry) throw new UsageError(`unexpected argument '-${c}' found`);
       values[entry[0]] = true;
     } else {
       positionals.push(a);
@@ -239,12 +282,12 @@ function parseArgs(args, spec) {
     i += 1;
   }
   if (!values.help && spec.positional && positionals.length < spec.positional.min) {
-    throw new Error(
+    throw new UsageError(
       `the following required arguments were not provided:\n  <${spec.positional.name}>`
     );
   }
   if (!values.help && spec.positional && positionals.length > spec.positional.max) {
-    throw new Error(
+    throw new UsageError(
       `unexpected argument '${positionals[spec.positional.max]}' found`
     );
   }
@@ -276,8 +319,8 @@ function cmdRender(args) {
   const end = values.end !== undefined ? num('end', values.end) : undefined;
   const duration = values.duration !== undefined ? num('duration', values.duration) : undefined;
   const scale = num('scale', values.scale ?? '1.0');
-  if (scale <= 0) throw new Error(`scale must be greater than 0, got ${scale}`);
-  const threads = uint('threads', values.threads ?? String(defaultThreads()));
+  if (scale <= 0) throw new UsageError(`scale must be greater than 0, got ${scale}`);
+  const threads = uint('threads', values.threads ?? String(defaultThreads()), { max: 512 });
 
   const svg = readSvg(input);
   const baseDir = baseDirOf(input);
@@ -324,11 +367,13 @@ function cmdMp4(args) {
       subtitles: { type: 'string', valueName: 'FILE' },
       'subtitle-font': { type: 'string', valueName: 'FILE' },
       'subtitle-font-size': { type: 'string', valueName: 'F' },
-      'subtitle-bold': { type: 'boolean' },
+      'subtitle-bold': { type: 'string', valueName: 'BOOL' },
       'subtitle-margin-v': { type: 'string', valueName: 'F' },
       'subtitle-alignment': { type: 'string', valueName: 'N' },
       'subtitle-outline': { type: 'string', valueName: 'F' },
       'subtitle-font-name': { type: 'string', valueName: 'NAME' },
+      'encoder-preset': { type: 'string', valueName: 'PRESET' },
+      backend: { type: 'string', valueName: 'MODE' },
       help: { type: 'boolean', short: 'h' },
     },
     positional: { name: 'INPUT', min: 1, max: 1 },
@@ -342,12 +387,13 @@ function cmdMp4(args) {
   const end = values.end !== undefined ? num('end', values.end) : undefined;
   const duration = values.duration !== undefined ? num('duration', values.duration) : undefined;
   const scale = num('scale', values.scale ?? '1.0');
-  if (scale <= 0) throw new Error(`scale must be greater than 0, got ${scale}`);
-  const threads = uint('threads', values.threads ?? String(defaultThreads()));
+  if (scale <= 0) throw new UsageError(`scale must be greater than 0, got ${scale}`);
+  const threads = uint('threads', values.threads ?? String(defaultThreads()), { max: 512 });
   const crf = uint('crf', values.crf ?? '10', { min: 0, max: 51 });
   const subtitleFontSize =
     values['subtitle-font-size'] !== undefined ? num('subtitle-font-size', values['subtitle-font-size']) : undefined;
-  const subtitleBold = values['subtitle-bold'] !== undefined ? true : undefined;
+  const subtitleBold =
+    values['subtitle-bold'] !== undefined ? boolArg('subtitle-bold', values['subtitle-bold']) : undefined;
   const subtitleMarginV =
     values['subtitle-margin-v'] !== undefined ? num('subtitle-margin-v', values['subtitle-margin-v']) : undefined;
   const subtitleAlignment =
@@ -372,7 +418,11 @@ function cmdMp4(args) {
     threads,
     videoCodec: values['video-codec'] ?? 'libx264',
     crf,
+    ...(values['encoder-preset'] !== undefined ? { encoderPreset: values['encoder-preset'] } : {}),
     background: values.background ?? '#000000',
+    // Mirror the Rust CLI's `mp4 --backend` default: `auto` (GPU when an
+    // adapter is present, else CPU).
+    backend: values.backend ?? 'auto',
     ...(values.subtitles !== undefined ? { subtitle: values.subtitles } : {}),
     ...(values['subtitle-font'] !== undefined ? { subtitleFont: values['subtitle-font'] } : {}),
     ...(subtitleFontSize !== undefined ? { subtitleFontSize } : {}),
@@ -421,7 +471,7 @@ function cmdTts(args) {
   }
 
   if (values.text !== undefined && values.input !== undefined) {
-    throw new Error("the argument '--text <TEXT>' cannot be used with '--input <PATH>'");
+    throw new UsageError("the argument '--text <TEXT>' cannot be used with '--input <PATH>'");
   }
   let text;
   if (values.text !== undefined) {
@@ -429,7 +479,7 @@ function cmdTts(args) {
   } else if (values.input !== undefined) {
     text = fs.readFileSync(values.input, 'utf8');
   } else {
-    throw new Error('the following required arguments were not provided:\n  --text <TEXT> or --input <PATH>');
+    throw new UsageError('the following required arguments were not provided:\n  --text <TEXT> or --input <PATH>');
   }
   const out = values.out ?? 'voice.webm';
   const voice = values.voice ?? 'zh-CN-XiaoxiaoNeural';
@@ -453,8 +503,8 @@ function cmdTts(args) {
 
   if (values['word-boundaries'] !== undefined) {
     const wb = path.resolve(values['word-boundaries']);
-    if (wb === path.resolve(out)) {
-      throw new Error('--word-boundaries and --out must be different paths');
+    if (pathKey(wb) === pathKey(out)) {
+      throw new UsageError('--word-boundaries and --out must be different paths');
     }
     const r = svgunity.ttsWithBoundaries(text, { voice, rate, pitch, volume, format });
     fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
@@ -545,6 +595,8 @@ function cmdCompose(args) {
       'subtitle-alignment': { type: 'string', valueName: 'N' },
       'subtitle-outline': { type: 'string', valueName: 'F' },
       'subtitle-font-name': { type: 'string', valueName: 'NAME' },
+      'encoder-preset': { type: 'string', valueName: 'PRESET' },
+      backend: { type: 'string', valueName: 'MODE' },
       json: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -556,7 +608,9 @@ function cmdCompose(args) {
   if (values['subtitle-font-size'] !== undefined) {
     style.fontSize = num('subtitle-font-size', values['subtitle-font-size']);
   }
-  if (values['subtitle-bold'] !== undefined) style.bold = true;
+  if (values['subtitle-bold'] !== undefined) {
+    style.bold = boolArg('subtitle-bold', values['subtitle-bold']);
+  }
   if (values['subtitle-margin-v'] !== undefined) {
     style.marginV = num('subtitle-margin-v', values['subtitle-margin-v']);
   }
@@ -567,7 +621,13 @@ function cmdCompose(args) {
     style.outline = num('subtitle-outline', values['subtitle-outline']);
   }
   if (values['subtitle-font-name'] !== undefined) style.fontName = values['subtitle-font-name'];
-  const report = svgunity.compose(positionals[0], values.out, Object.keys(style).length ? style : undefined);
+  const report = svgunity.compose(
+    positionals[0],
+    values.out,
+    Object.keys(style).length ? style : undefined,
+    values['encoder-preset'],
+    values.backend
+  );
   if (values.json) {
     printJson(report);
   } else {
@@ -591,13 +651,13 @@ function cmdSrt(args) {
   const { values } = parseArgs(args, spec);
   if (values.help) return printHelp('srt');
   if (values.input === undefined && values.boundaries === undefined) {
-    throw new Error('the following required arguments were not provided:\n  --input <PATH> and --boundaries <PATH>');
+    throw new UsageError('the following required arguments were not provided:\n  --input <PATH> and --boundaries <PATH>');
   }
   if (values.input === undefined) {
-    throw new Error('the following required arguments were not provided:\n  --input <PATH>');
+    throw new UsageError('the following required arguments were not provided:\n  --input <PATH>');
   }
   if (values.boundaries === undefined) {
-    throw new Error('the following required arguments were not provided:\n  --boundaries <PATH>');
+    throw new UsageError('the following required arguments were not provided:\n  --boundaries <PATH>');
   }
   const text = fs.readFileSync(values.input, 'utf8');
   const boundariesJson = fs.readFileSync(values.boundaries, 'utf8');
@@ -714,7 +774,7 @@ const COMMANDS = {
       ['--start <SEC>', 'Start time (seconds) of the rendered window [default: 0]'],
       ['--end <SEC>', 'End time (seconds) of the rendered window; defaults to the animation duration'],
       ['--scale <F>', 'Resolution multiplier (1.0 = document intrinsic size) [default: 1.0]'],
-      ['--threads <N>', 'Parallel render threads (default: logical CPU count)'],
+      ['--threads <N>', 'Parallel render threads (default: min(logical cores / 2, 8), max 512)'],
       ['-h, --help', 'Print help'],
     ],
   },
@@ -729,18 +789,20 @@ const COMMANDS = {
       ['--start <SEC>', 'Start time (seconds) of the rendered window [default: 0]'],
       ['--end <SEC>', 'End time (seconds) of the rendered window'],
       ['--scale <F>', 'Resolution multiplier [default: 1.0]'],
-      ['--threads <N>', 'Parallel render threads (default: logical CPU count)'],
+      ['--threads <N>', 'Parallel render threads (default: min(logical cores / 2, 8), max 512)'],
       ['--video-codec <CODEC>', 'Video codec (default libx264; falls back to mpeg4 if unavailable)'],
       ['--crf <N>', 'Quality 0-51: CRF for the x264 family (lower = sharper) [default: 10]'],
       ['--background <#RRGGBB>', 'Background color for transparent regions [default: #000000]'],
       ['--subtitles <FILE>', 'Burn subtitles from an .srt/.ass file (timed by the animation clock)'],
       ['--subtitle-font <FILE>', 'Font file for subtitle rendering (recommended for CJK)'],
       ['--subtitle-font-size <F>', 'Subtitle font size in pixels (default: scales with the shorter frame side)'],
-      ['--subtitle-bold', 'Render subtitles in bold (default true)'],
+      ['--subtitle-bold <BOOL>', 'Render subtitles in bold (default true; --subtitle-bold false to disable)'],
       ['--subtitle-margin-v <F>', 'Subtitle bottom margin in pixels (default 10)'],
       ['--subtitle-alignment <N>', 'Subtitle alignment 1..9 (default 2 = bottom-center)'],
       ['--subtitle-outline <F>', 'Subtitle outline width in pixels (default 1.5)'],
       ['--subtitle-font-name <NAME>', 'Subtitle font family name (default follows --subtitle-font)'],
+      ['--encoder-preset <PRESET>', 'x264-family speed/quality preset (ultrafast..placebo; ignored by encoders without a preset, e.g. mpeg4)'],
+      ['--backend <MODE>', 'Render backend: auto (default; GPU with up to 4 renderers, falls back to CPU without an adapter) / cpu / gpu'],
       ['-h, --help', 'Print help'],
     ],
   },
@@ -782,11 +844,13 @@ const COMMANDS = {
       ['<MANIFEST>', 'Manifest JSON (out/fps/scale/background/pad/video_codec/crf/threads + scenes[{svg, audio?, duration?}])'],
       ['--out <PATH>', "Override the manifest's output path"],
       ['--subtitle-font-size <F>', "Override the manifest's subtitle font size (px)"],
-      ['--subtitle-bold', "Override the manifest's subtitle bold"],
+      ['--subtitle-bold <BOOL>', "Override the manifest's subtitle bold"],
       ['--subtitle-margin-v <F>', "Override the manifest's subtitle bottom margin (px)"],
       ['--subtitle-alignment <N>', "Override the manifest's subtitle alignment 1..9"],
       ['--subtitle-outline <F>', "Override the manifest's subtitle outline width (px)"],
       ['--subtitle-font-name <NAME>', "Override the manifest's subtitle font family name"],
+      ['--encoder-preset <PRESET>', "Override the manifest's encoder_preset (ultrafast/superfast/veryfast/faster/fast/medium/slow/slower/veryslow/placebo)"],
+      ['--backend <MODE>', "Override the manifest's backend (auto/cpu/gpu)"],
       ['--json', 'Print the final video/audio durations as JSON instead of a summary'],
       ['-h, --help', 'Print help'],
     ],
@@ -888,11 +952,25 @@ function main(argv) {
     case 'video-check':
       return cmdVideoCheck(rest);
     default:
-      throw new Error(`unrecognized subcommand '${cmd}'`);
+      throw new UsageError(`unrecognized subcommand '${cmd}'`);
   }
 }
 
 module.exports = svgunity;
+
+// Test-only access to the CLI's argument-handling helpers (the addon object
+// itself is the documented public surface).
+module.exports.__internals = {
+  UsageError,
+  num,
+  uint,
+  boolArg,
+  parseArgs,
+  parsePixelCoord,
+  windowFrameCount,
+  pathKey,
+  exitCodeOf,
+};
 
 if (require.main === module) {
   try {

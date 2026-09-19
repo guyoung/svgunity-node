@@ -1,6 +1,6 @@
 {
   "name": "@svgunity/svgunity_lib.darwin-x64",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Native Artifact for svgunity",
   "main": "index.js",
   "author": "guyoung",

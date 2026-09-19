@@ -14,7 +14,7 @@ packages/
 ├── .gitignore         # Ignores *.node (binaries stay out of git; the scaffold is tracked)
 └── <triple>/          # Per-platform package, e.g. win32-x64-msvc
     ├── index.js       # module.exports = require('./svgunity_lib.<triple>.node')
-    ├── package.json   # Package name @svgunity/svgunity_lib.<triple>, version 1.0.0
+    ├── package.json   # Package name @svgunity/svgunity_lib.<triple> (per-platform version)
     ├── README.md      # Short note inside each platform package
     └── svgunity_lib.<triple>.node   # Native binary (built by CI or a local `napi build`; not committed)
 ```
@@ -42,8 +42,14 @@ loads the addon in this order:
 ## Building & publishing
 
 - **Build**: produced by the CI workflow `.github/workflows/build-svgunity-lib.yml`
-  (a `napi build` on the platform matrix); locally, run the following from the
-  `cli/` directory to build the current platform binary:
+  (a `napi build` on the platform matrix). Locally on Windows, build and
+  install the current platform binary with:
+
+  ```bat
+  crates\svgunity-cli\build-svgunity-lib.bat --release
+  ```
+
+  or, via the napi CLI, run the following from the `cli/` directory:
 
   ```bat
   npx --yes -p @napi-rs/cli napi build --release --manifest-path ..\..\crates\svgunity-cli\Cargo.toml --output-dir prebuilds
@@ -52,7 +58,7 @@ loads the addon in this order:
   the scaffold files (`package.json` / `index.js` / `index.d.ts` / `README.md`)
   stay tracked.
 - **Consumption**: `cli/package.json` lists the platform packages
-  (`@svgunity/svgunity_lib.<triple>` @ `1.0.0`) under `optionalDependencies`;
+  (`@svgunity/svgunity_lib.<triple>`) under `optionalDependencies`;
   once published, `npm install` fetches the matching binary automatically, and
   unpublished setups fall back to this directory or the Cargo artifacts.
 

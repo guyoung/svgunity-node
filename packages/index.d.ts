@@ -20,9 +20,29 @@ export interface AudioStatsInfo {
  * Compose several SVG scenes into one MP4 with an audio-driven timeline.
  * `manifest_path` points to a JSON manifest — see the CLI's
  * `compose --help` for the schema; every path is resolved against the
- * manifest's directory.
+ * manifest's directory. `style` carries CLI-style subtitle overrides that
+ * win over the manifest's subtitle fields. `encoder_preset` overrides the
+ * manifest's `encoder_preset` (same presets as `mp4`; unset = encoder
+ * default "medium"). `backend` (auto/cpu/gpu) overrides the manifest's
+ * `backend` field.
  */
-export declare function compose(manifestPath: string, out?: string | undefined | null): ComposeReportInfo
+export declare function compose(manifestPath: string, out?: string | undefined | null, style?: SubtitleStyleOptions | undefined | null, encoderPreset?: string | undefined | null, backend?: string | undefined | null): ComposeReportInfo
+
+/** Subtitle style overrides for `compose` (mirrors the CLI's `compose --subtitle-*` flags). */
+export interface SubtitleStyleOptions {
+  /** Subtitle font size in pixels. */
+  fontSize?: number
+  /** Subtitle bold (`true`/`false`). */
+  bold?: boolean
+  /** Subtitle bottom margin in pixels. */
+  marginV?: number
+  /** Subtitle alignment 1..9. */
+  alignment?: number
+  /** Subtitle outline width in pixels. */
+  outline?: number
+  /** Subtitle font family name. */
+  fontName?: string
+}
 
 /** Report of a finished `compose` run (mirrors the CLI's summary). */
 export interface ComposeReportInfo {
@@ -158,6 +178,27 @@ export interface RenderOptions {
    * given, only this font is used, making output deterministic).
    */
   subtitleFont?: string
+  /**
+   * Subtitle font size in pixels (default: scales with the shorter frame
+   * side — ~64px at 1080-class, ~40px at 720-class).
+   */
+  subtitleFontSize?: number
+  /** Render subtitles in bold (default true). */
+  subtitleBold?: boolean
+  /** Subtitle bottom margin in pixels (default 10). */
+  subtitleMarginV?: number
+  /** Subtitle alignment 1..9 (default 2 = bottom-center). */
+  subtitleAlignment?: number
+  /** Subtitle outline width in pixels (default 1.5). */
+  subtitleOutline?: number
+  /** Subtitle font family name (default follows `subtitle_font`). */
+  subtitleFontName?: string
+  /**
+   * Render backend for `renderMp4`: `auto` (GPU with up to 4 renderers when
+   * an adapter is present, else CPU), `cpu`, or `gpu` (hard error without
+   * an adapter). Defaults to `cpu` when unset; the JS CLI passes `auto`.
+   */
+  backend?: string
 }
 
 /**
@@ -170,8 +211,9 @@ export declare function scaledSize(width: number, height: number, scale: number)
 /**
  * Generate SRT subtitle text from narration text and the word-boundary JSON
  * written by `ttsWithBoundaries` / the CLI's `tts --word-boundaries`.
+ * `max_width_em` caps one subtitle line (default `MAX_WIDTH_EM`).
  */
-export declare function srtGenerate(text: string, boundariesJson: string): string
+export declare function srtGenerate(text: string, boundariesJson: string, maxWidthEm?: number | undefined | null): string
 
 /** Parse an SVG and report its intrinsic size and animation duration. */
 export declare function svgInfo(svg: string, opts?: RenderOptions | undefined | null): SvgInfo
